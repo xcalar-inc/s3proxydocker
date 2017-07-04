@@ -16,7 +16,7 @@
 
 ## Getting Started
 - Update [s3proxy.conf](/s3proxy.conf) with your own storage provider backend. I have provided an example of s3proxy.conf for Azure storage. For more options against other storage providers, checkout [S3Proxy's wiki](https://github.com/andrewgaul/s3proxy/wiki/Storage-backend-examples)
-- If you have a need for `s3proxy.virtual-host`, update [s3proxy.conf](/s3proxy.conf) with your own docker ip. 
+- If you have a need for `s3proxy.virtual-host`, update [s3proxy.conf](/s3proxy.conf) with your own docker ip.
 
 To find the docker ip:
 ```
@@ -64,6 +64,104 @@ If the container name is `democontainer`, then add a subdomain as follows in the
 192.168.99.100  democontainer.192.168.99.100
 ```
 To verify, navigate to [CONTAINER NAME].[DOCKER MACHINE IP]:8080. For example: http://democontainer.192.168.99.100:8080/
+
+## S3 SSL support
+For SSL to work you'll need to create a self signed certificate in a Java keystore, and set [s3proxy.conf](s3proxy.conf)
+to use it.
+
+Let jclouds know about the keystore and that you'll like an SSL endpoint via [s3proxy.conf](s3proxy.conf) and add any
+jcloud provider settings. This is done via the .env file. Copy the included env.sample to .env, and modify the provider
+settings.
+
+```
+JCLOUDS_PROVIDER=azureblob
+JCLOUDS_IDENTITY=storageaccount
+JCLOUDS_CREDENTIAL=secretkey
+```
+
+The included Makefile will build a keystore.jks and keystore.crt for you, before building the
+docker images.
+
+```
+$ make
+keytool -keystore keystore.jks -alias aws -storepass password -genkey -keyalg RSA -keypass password \
+	-validity 3650 \
+	-ext san=dns:s3.amazonaws.com,dns:s3-us-west-2.amazonaws.com,dns:s3.us-west-2.amazonaws.com,dns:localhost \
+	-dname 'CN=*.s3.amazonaws.com, OU=Corp, O=Internal, L=San Jose, S=CA, C=US'
+keytool -keystore keystore.jks -alias aws -storepass password -exportcert -rfc > keystore.crt
+docker-compose build
+Building s3proxy
+Step 1/11 : FROM java
+ ---> d23bdf5b1b1b
+Step 2/11 : FROM maven:3
+ ---> d089198872b5
+Step 3/11 : WORKDIR /opt
+ ---> Using cache
+ ---> b79905759a53
+Step 4/11 : RUN git clone -b master https://github.com/andrewgaul/s3proxy.git
+ ---> Using cache
+ ---> 019eff749ba2
+Step 5/11 : WORKDIR /opt/s3proxy
+ ---> Using cache
+ ---> a137eb9cea25
+Step 6/11 : RUN mvn package
+ ---> Using cache
+ ---> d50a3b78e2cd
+Step 7/11 : ADD ./s3proxy.conf /opt/s3proxy/s3proxy.conf
+ ---> Using cache
+ ---> 77dae5b002e7
+Step 8/11 : ADD ./keystore.jks /opt/s3proxy/
+ ---> d4a327a52e79
+Removing intermediate container 6a4930ed3510
+Step 9/11 : EXPOSE 8080
+ ---> Running in c92c9b793dea
+ ---> 82477a6f54c8
+Removing intermediate container c92c9b793dea
+Step 10/11 : EXPOSE 8443
+ ---> Running in a9dd9d3211f9
+ ---> 6000414563f7
+Removing intermediate container a9dd9d3211f9
+Step 11/11 : ENTRYPOINT ./docker-entrypoint.sh
+ ---> Running in 4444fea0f596
+ ---> 669fdfdf16c4
+Removing intermediate container 4444fea0f596
+Successfully built 669fdfdf16c4
+Successfully tagged s3proxydocker_s3proxy:latest
+docker-compose up -d
+Recreating s3proxy ...
+Recreating s3proxy ... done
+```
+
+Next redirect the SSL target to localhost via /etc/hosts:
+
+`127.0.0.1      s3.amazonaws.com s3-us-west-2.amazonaws.com`
+
+Set some environment variables for aws cli to work properly
+
+```
+export AWS_CA_BUNDLE=$(pwd)/keystore.crt
+export AWS_DEFAULT_REGION=us-west-2
+```
+
+If you set s3proxy.authorization to something other then none, you'll need to also set the following:
+
+```
+export AWS_SECRET_ACCESS_KEY=local-credential
+export AWS_ACCESS_KEY_ID=local-identity
+```
+
+Now you should be able to use the aws cli as normal:
+
+```
+$ aws s3 ls
+1969-12-31 16:00:00 dataflows
+1969-12-31 16:00:00 datasets
+
+$ aws s3 ls s3://datasets/
+      PRE ChicagoData/
+      PRE CreditRisk/
+```
+
 
 ## Testing with a Sample App
 Refer to [the AWS Java sample app](https://github.com/ritazh/aws-java-sample) repo to test your S3Proxy deployment. It is a simple Java application illustrating usage of the AWS S3 SDK for Java.

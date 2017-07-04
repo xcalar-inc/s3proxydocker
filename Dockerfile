@@ -9,8 +9,12 @@ WORKDIR /opt/s3proxy
 RUN mvn package
 
 ADD ./s3proxy.conf /opt/s3proxy/s3proxy.conf
+ADD ./keystore.jks /opt/s3proxy/
+
+ADD ./docker-entrypoint.sh /
 
 EXPOSE 8080
+EXPOSE 8443
 
-ENTRYPOINT ./target/s3proxy --properties ./s3proxy.conf
+ENTRYPOINT ["/docker-entrypoint.sh"]
 
