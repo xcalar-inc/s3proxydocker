@@ -1,0 +1,11 @@
+version: '2'
+services:
+  s3proxy:
+    restart: always
+    container_name: s3proxy
+    build: .
+    hostname: s3proxy
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - "./s3proxy.conf:/opt/s3proxy/s3proxy.conf:ro"
